@@ -39,15 +39,19 @@ unshare --mount --propagation slave --pid --fork --kill-child \
 session_pid=$!
 # unshare --fork ignores SIGTERM and SIGINT while it waits, so a request to
 # stop goes to the session it forked, which becomes RetroArch. If that is
-# still running three seconds later, killing unshare kills it (--kill-child).
+# still running three seconds later, it is killed, and unshare with it.
 stop() {
-    for child in $(pgrep -P "$session_pid" 2>/dev/null); do
+    children=$(pgrep -P "$session_pid" 2>/dev/null || :)
+    for child in $children; do
         kill -TERM "$child" 2>/dev/null || :
     done
     tries=0
     while kill -0 "$session_pid" 2>/dev/null && [ "$tries" -lt 30 ]; do
         sleep 0.1
         tries=$((tries + 1))
+    done
+    for child in $children; do
+        kill -KILL "$child" 2>/dev/null || :
     done
     kill -KILL "$session_pid" 2>/dev/null || :
     wait "$session_pid" 2>/dev/null || :

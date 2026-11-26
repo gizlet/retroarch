@@ -83,5 +83,5 @@ pivot_root . .
 umount --internal-only --no-canonicalize --lazy .
 exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     HOME=/save XDG_RUNTIME_DIR=/run/retroarch LANG=C.UTF-8 \
-    setpriv --reuid=$user --regid=$user --groups="$groups" --no-new-privs \
+    setpriv --reuid=$user --regid=$user --groups="$groups" --no-new-privs --pdeathsig keep \
     /usr/share/gizlet-retroarch/start
