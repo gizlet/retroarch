@@ -26,6 +26,7 @@ done
 if [ -z "$games" ] || [ ! -d "$games" ]; then
     games=$("$app_dir/bin/find-games")
 fi
+games=$(readlink -f -- "$games")
 save=${GIZLET_SAVE_DIR:-/opt/gizlet/saves/io.gizlet.retroarch}
 mkdir -p "$save"
 
@@ -36,5 +37,21 @@ mkdir "$session_dir/root"
 unshare --mount --propagation slave --pid --fork --kill-child \
     /bin/sh "$app_dir/bin/session" "$app_dir" "$session_dir/root" "$save" "$games" &
 session_pid=$!
-trap 'kill "$session_pid" 2>/dev/null || true; wait "$session_pid" || true; exit 143' TERM INT
+# unshare --fork ignores SIGTERM and SIGINT while it waits, so a request to
+# stop goes to the session it forked, which becomes RetroArch. If that is
+# still running three seconds later, killing unshare kills it (--kill-child).
+stop() {
+    for child in $(pgrep -P "$session_pid" 2>/dev/null); do
+        kill -TERM "$child" 2>/dev/null || :
+    done
+    tries=0
+    while kill -0 "$session_pid" 2>/dev/null && [ "$tries" -lt 30 ]; do
+        sleep 0.1
+        tries=$((tries + 1))
+    done
+    kill -KILL "$session_pid" 2>/dev/null || :
+    wait "$session_pid" 2>/dev/null || :
+    exit 143
+}
+trap stop TERM INT
 wait "$session_pid"

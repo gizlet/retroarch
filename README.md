@@ -10,11 +10,13 @@ RetroArch 1.22.2 with free libretro cores, packaged as a Gizlet app for the R36S
 | Cores | Debian's `libretro-mgba`, `libretro-gambatte`, `libretro-nestopia`, `libretro-bsnes-mercury-performance`, `libretro-beetle-pce-fast` and `libretro-beetle-wswan`, and `libretro-core-info`. Cores from Debian's non-free section are not included. |
 | Runtime | Mesa, ALSA, udev and the other libraries RetroArch needs, unmodified from the same Debian snapshot (`20261124T000000Z`, forky). |
 | `bin/launch`, `bin/launch.sh`, `bin/session`, `bin/find-games` | The entry ([`app/`](app)): a static launcher, because the Gizlet Store requires an ELF entry, and the scripts it runs. |
-| Configuration | [`config/`](config): first-launch defaults, the drivers and folders applied on every launch, and the R36S controls. |
+| Configuration | [`config/`](config): first-launch defaults, the drivers and folders applied on every launch, the R36S controls, and `start`, which prepares the save folder and starts RetroArch. |
 
 ## How it runs
 
-`gizlet run io.gizlet.retroarch [--games DIR]` runs `bin/launch.sh` as root. It mounts `runtime.sqfs` as the root of a private mount and PID namespace, makes the display, controls, sound, `/home`, `/media`, `/mnt` and the app's save folder (as `/save`) visible, and starts RetroArch as `nobody` with the device groups it needs. Mounts propagate into the namespace, so a TF2 card inserted while RetroArch runs appears in it.
+`gizlet run io.gizlet.retroarch [--games DIR]` runs `bin/launch.sh` as root. It mounts `runtime.sqfs` as the root of a private mount and PID namespace, makes the display, controls, sound, `/home`, `/media` and `/mnt` (read-only) and the app's save folder (as `/save`) visible, and starts RetroArch as `nobody` with the device groups it needs. Root only hands the save folder to `nobody`; [`config/start`](config/start) creates the files in it after privileges are dropped. Mounts propagate into the namespace, so a TF2 card inserted while RetroArch runs appears in it.
+
+Stopping the app (holding FN, or Select and Start) sends SIGTERM to RetroArch. `unshare` ignores it while waiting, so the launch script forwards it to the session, and kills `unshare`, which kills the session, if RetroArch is still running three seconds later.
 
 The file browser starts in `DIR`, which Emulation Center passes; without it, in the TF2 card where it is mounted ([`app/find-games`](app/find-games): a mounted filesystem on an MMC disk other than the one holding the root filesystem, preferring `/media/tf2`), else in `/home`. Saves, states, BIOS files (`system/`) and settings live in the save folder, `/opt/gizlet/saves/io.gizlet.retroarch`, so the card is only read.
 

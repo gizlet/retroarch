@@ -39,12 +39,13 @@ for device in /dev/dri/card* /dev/dri/renderD* /dev/input/event* /dev/snd/*; do
 done
 [ ! -f /etc/asound.conf ] || mount --bind /etc/asound.conf "$root/etc/asound.conf"
 
-# The user's own files: /home and every card mounted under /media and /mnt.
-# RetroArch runs as nobody and keeps saves, states and settings in its own
-# save folder, so it reads games without writing to the user's card.
+# The user's own files: /home and every card mounted under /media and /mnt,
+# read-only. RetroArch runs as nobody and keeps saves, states and settings in
+# its own save folder. A card mounted after the start appears too, with its
+# own mount options; Gizlet OS mounts TF2 so that only root can write to it.
 for dir in /home /media /mnt; do
     [ -d "$dir" ] || continue
-    mount --rbind "$dir" "$root$dir"
+    mount --rbind -o ro=recursive "$dir" "$root$dir" 2>/dev/null || mount --rbind "$dir" "$root$dir"
 done
 case $games in
     /home | /home/* | /media | /media/* | /mnt | /mnt/*) browse=$games ;;
@@ -56,9 +57,9 @@ case $games in
         ;;
 esac
 
-mkdir -p "$save/saves" "$save/states" "$save/system" "$save/screenshots" "$save/playlists" "$save/logs"
-[ -f "$save/retroarch.cfg" ] || cp "$root/usr/share/gizlet-retroarch/defaults.cfg" "$save/retroarch.cfg"
-chown -R "$user:$user" "$save"
+# The save folder belongs to RetroArch's user. Root only hands it over; the
+# files in it are made by bin/start after privileges are dropped.
+chown -R -h "$user:$user" "$save"
 mount --bind "$save" "$root/save"
 
 swap=false
@@ -76,5 +77,4 @@ umount --internal-only --no-canonicalize --lazy .
 exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     HOME=/save XDG_RUNTIME_DIR=/run/retroarch LANG=C.UTF-8 \
     setpriv --reuid=$user --regid=$user --groups="$groups" --no-new-privs \
-    /usr/bin/retroarch --menu --config /save/retroarch.cfg \
-    --appendconfig "/usr/share/gizlet-retroarch/gizlet.cfg|/run/retroarch/launch.cfg"
+    /usr/share/gizlet-retroarch/start

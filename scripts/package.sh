@@ -119,6 +119,7 @@ install -m 0755 "$build_dir/build/root/src/retroarch" "$runtime/usr/bin/retroarc
 share=$runtime/usr/share/gizlet-retroarch
 mkdir -p "$share/autoconfig" "$runtime/usr/share/doc/retroarch"
 install -m 0644 "$project/config/defaults.cfg" "$project/config/gizlet.cfg" "$share/"
+install -m 0755 "$project/config/start" "$share/start"
 install -m 0644 "$project/config/autoconfig/"*.cfg "$share/autoconfig/"
 install -m 0644 "$build_dir/build/root/src/debian/copyright" "$runtime/usr/share/doc/retroarch/copyright"
 install -m 0644 "$build_dir/build/root/src/COPYING" "$runtime/usr/share/doc/retroarch/COPYING"
