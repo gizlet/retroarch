@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  issue_comment:
+    types: [created]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request to run for; leave empty to run on the selected branch.
+        required: false
+        default: ''
+        type: string
+      head_sha:
+        description: Expected pull-request head; a moved head is skipped.
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.pull_request_number != '')
+      || (github.event_name == 'issue_comment' && github.event.issue.pull_request
+          && contains(github.event.comment.body, '/ci'))
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+    uses: gizlet/.github/.github/workflows/pr-check-start.yml@latest
+    with:
+      check-name: CI
+      command: /ci
+      pull_request_number: ${{ inputs.pull_request_number }}
+      head_sha: ${{ inputs.head_sha }}
+
+  arm64:
+    name: Build, test and package (ARM64)
+    needs: start
+    if: >-
+      !cancelled() && (
+        needs.start.outputs.run == 'true'
+        || (needs.start.result == 'skipped' && github.event_name != 'issue_comment'))
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    concurrency:
+      group: ci-${{ needs.start.outputs.number || github.run_id }}
+      cancel-in-progress: ${{ needs.start.outputs.number != '' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ needs.start.outputs.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Build, test and package
+        run: ./scripts/ci.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gizlet-packages
+          path: dist/*.gzl
+          if-no-files-found: error
+          overwrite: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gizlet-sources
+          path: dist/sources/
+          if-no-files-found: error
+          overwrite: true
+
+  release:
+    needs: arm64
+    if: >-
+      !cancelled() && needs.arm64.result == 'success' && (
+        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag'))
+        || (github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && inputs.pull_request_number == ''))
+    permissions:
+      contents: write
+      id-token: write
+    uses: gizlet/.github/.github/workflows/store-release.yml@latest
+
+  sources:
+    name: Attach notices and corresponding source
+    needs: [arm64, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gizlet-sources
+          path: ${{ runner.temp }}/gizlet-sources
+      - name: Upload to this build's release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("gizlet.toml", "rb"))["version"])')
+          tag="v$version"
+          if ! commit=$(gh api "repos/$GH_REPO/commits/refs%2Ftags%2F$tag" --jq .sha 2>/dev/null); then
+            echo "No $tag release; nothing to attach."
+            exit 0
+          fi
+          if [ "$commit" != "$GITHUB_SHA" ]; then
+            echo "$tag was built from $commit, not $GITHUB_SHA; keeping its own sources."
+            exit 0
+          fi
+          gh release upload "$tag" "$RUNNER_TEMP"/gizlet-sources/* --clobber
+
+  finish:
+    needs: [start, arm64]
+    if: always() && needs.start.outputs.run == 'true'
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+    uses: gizlet/.github/.github/workflows/pr-check-finish.yml@latest
+    with:
+      check_run_id: ${{ needs.start.outputs.check_run_id }}
+      comment_id: ${{ needs.start.outputs.comment_id }}
+      result: ${{ needs.arm64.result }}
