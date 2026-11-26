@@ -32,6 +32,10 @@ runtime_packages="ca-certificates,libasound2t64,libasound2-data,libdrm2,libegl1,
 # stalled one instead of waiting forever.
 apt_options='-o Acquire::Check-Valid-Until=false -o Acquire::Retries=8 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60'
 
+# Debian's archive key, on the build host and then in each chroot. Ubuntu does
+# not trust it by default, so the sources name it.
+keyring=/usr/share/keyrings/debian-archive-keyring.gpg
+
 bootstrap() {
     mmdebstrap --mode=root --variant=minbase --architectures=arm64 \
         --aptopt='Acquire::Check-Valid-Until "false"' \
@@ -40,7 +44,7 @@ bootstrap() {
         --aptopt='Acquire::https::Timeout "60"' \
         --aptopt='APT::Install-Recommends "false"' \
         --include="$1" --format=directory "$suite" "$2" \
-        "deb $mirror $suite main" "deb-src $mirror $suite main"
+        "deb [signed-by=$keyring] $mirror $suite main" "deb-src [signed-by=$keyring] $mirror $suite main"
 }
 
 # in_chroot DIR SCRIPT: runs SCRIPT in DIR with the host's /dev and a /proc,
