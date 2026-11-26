@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs in the runtime as RetroArch's user: prepares the save folder (/save)
+# and starts RetroArch with the settings for this launch.
+set -eu
+
+mkdir -p /save/saves /save/states /save/system /save/screenshots /save/playlists /save/logs
+[ -e /save/retroarch.cfg ] || cp /usr/share/gizlet-retroarch/defaults.cfg /save/retroarch.cfg
+exec /usr/bin/retroarch --menu --config /save/retroarch.cfg \
+    --appendconfig "/usr/share/gizlet-retroarch/gizlet.cfg|/run/retroarch/launch.cfg"

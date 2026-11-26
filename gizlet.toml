@@ -1,0 +1,48 @@
+id = "io.gizlet.retroarch"
+name = "RetroArch"
+version = "1.22.2.1"
+category = "app"
+description = "RetroArch 1.22.2 with free libretro cores for NES, SNES, Game Boy, Game Boy Advance, PC Engine and WonderSwan. Open the games you already have."
+tags = ["emulator", "retro", "libretro", "gamepad"]
+color = "#2C3A4F"
+license = "GPL-3.0-or-later"
+runtime = 1
+icon = "store/icon.png"
+
+[names]
+zh-CN = "RetroArch"
+
+[descriptions]
+zh-CN = "RetroArch 1.22.2，附带 NES、SNES、Game Boy、GBA、PC Engine 和 WonderSwan 的自由 libretro 核心。打开你自己的游戏文件。"
+
+[links]
+website = "https://www.retroarch.com"
+
+[about]
+en = "store/about.en.md"
+zh-CN = "store/about.zh-CN.md"
+
+[[controls]]
+button = "dpad"
+action = "Move in the menu"
+actions = { zh-CN = "在菜单中移动" }
+
+[[controls]]
+button = "a"
+action = "Choose"
+actions = { zh-CN = "确认" }
+
+[[controls]]
+button = "b"
+action = "Back"
+actions = { zh-CN = "返回" }
+
+[[controls]]
+button = "select"
+action = "Hold for hotkeys: X menu, Start quit, L load, R save"
+actions = { zh-CN = "按住使用热键：X 菜单，Start 退出，L 读档，R 存档" }
+
+[[packages]]
+target = "aarch64-unknown-linux-gnu"
+tier = "lite"
+entry = "bin/launch"
