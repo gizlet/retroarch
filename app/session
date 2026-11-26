@@ -45,7 +45,14 @@ done
 # own mount options; Gizlet OS mounts TF2 so that only root can write to it.
 for dir in /home /media /mnt; do
     [ -d "$dir" ] || continue
-    mount --rbind -o ro=recursive "$dir" "$root$dir" 2>/dev/null || mount --rbind "$dir" "$root$dir"
+    mount --rbind -o ro=recursive "$dir" "$root$dir" 2>/dev/null || {
+        # Without recursive mount attributes, each mount in the tree is made
+        # read-only in turn; a failure stops the launch.
+        mount --rbind "$dir" "$root$dir"
+        findmnt -R -l -n -o TARGET "$root$dir" | while IFS= read -r target; do
+            mount -o remount,bind,ro "$target"
+        done
+    }
 done
 case $games in
     /home | /home/* | /media | /media/* | /mnt | /mnt/*) browse=$games ;;
