@@ -1,0 +1,36 @@
+#!/bin/sh
+# Prints the folder RetroArch's file browser opens first: where the TF2 card
+# is mounted, else /home. The TF2 card is a mounted filesystem on an MMC disk
+# other than the one holding the root filesystem (TF1); Gizlet OS mounts it at
+# /media/tf2, which wins when several qualify.
+set -eu
+
+# disk_of MAJOR:MINOR: the sysfs path of the disk holding that block device.
+disk_of() {
+    path=$(readlink -f "/sys/dev/block/$1" 2>/dev/null) || return 0
+    [ -f "$path/partition" ] && path=${path%/*}
+    printf '%s\n' "$path"
+}
+
+root_disk=
+while read -r _ _ device _ target _; do
+    if [ "$target" = / ]; then
+        root_disk=$(disk_of "$device")
+        break
+    fi
+done < /proc/self/mountinfo
+
+found=
+while read -r _ _ device _ target _; do
+    disk=$(disk_of "$device")
+    case ${disk##*/} in mmcblk*) ;; *) continue ;; esac
+    [ "$disk" != "$root_disk" ] || continue
+    target=$(printf '%b' "$target")
+    [ -d "$target" ] || continue
+    if [ "$target" = /media/tf2 ]; then
+        found=$target
+        break
+    fi
+    [ -n "$found" ] || found=$target
+done < /proc/self/mountinfo
+printf '%s\n' "${found:-/home}"

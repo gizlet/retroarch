@@ -1,0 +1,80 @@
+#!/bin/sh
+# Runs inside launch's mount and PID namespaces: mounts the runtime as the
+# root, makes the display, controls, sound, the user's folders and RetroArch's
+# save folder visible in it, then starts RetroArch as an unprivileged user.
+set -eu
+
+app_dir=$1
+root=$2
+save=$3
+games=$4
+user=65534
+
+mount -t squashfs -o loop,ro,nodev,nosuid "$app_dir/runtime.sqfs" "$root"
+mount -t proc -o nosuid,nodev,noexec proc "$root/proc"
+mount -t tmpfs -o nosuid,mode=0755 tmpfs "$root/dev"
+mount -t tmpfs -o nosuid,nodev,mode=1777 tmpfs "$root/tmp"
+mount -t tmpfs -o nosuid,nodev,mode=0755 tmpfs "$root/run"
+mount --bind /sys "$root/sys"
+mount -o remount,bind,ro,nosuid,nodev,noexec "$root/sys"
+
+for device in null zero random urandom full tty; do
+    touch "$root/dev/$device"
+    mount --bind "/dev/$device" "$root/dev/$device"
+done
+mkdir -m 1777 "$root/dev/shm"
+ln -s /proc/self/fd "$root/dev/fd"
+
+groups=$user
+for source in /dev/dri /dev/input /dev/snd /run/udev; do
+    [ -d "$source" ] || continue
+    mkdir -p "$root$source"
+    mount --bind "$source" "$root$source"
+    mount -o remount,bind,ro,nosuid,noexec "$root$source"
+done
+for device in /dev/dri/card* /dev/dri/renderD* /dev/input/event* /dev/snd/*; do
+    [ -c "$device" ] || continue
+    group=$(stat -c '%g' "$device")
+    case ",$groups," in *",$group,"*) ;; *) [ "$group" -eq 0 ] || groups="$groups,$group" ;; esac
+done
+[ ! -f /etc/asound.conf ] || mount --bind /etc/asound.conf "$root/etc/asound.conf"
+
+# The user's own files: /home and every card mounted under /media and /mnt.
+# RetroArch runs as nobody and keeps saves, states and settings in its own
+# save folder, so it reads games without writing to the user's card.
+for dir in /home /media /mnt; do
+    [ -d "$dir" ] || continue
+    mount --rbind "$dir" "$root$dir"
+done
+case $games in
+    /home | /home/* | /media | /media/* | /mnt | /mnt/*) browse=$games ;;
+    *)
+        mkdir "$root/run/games"
+        mount --bind "$games" "$root/run/games"
+        mount -o remount,bind,ro,nosuid,nodev,noexec "$root/run/games"
+        browse=/run/games
+        ;;
+esac
+
+mkdir -p "$save/saves" "$save/states" "$save/system" "$save/screenshots" "$save/playlists" "$save/logs"
+[ -f "$save/retroarch.cfg" ] || cp "$root/usr/share/gizlet-retroarch/defaults.cfg" "$save/retroarch.cfg"
+chown -R "$user:$user" "$save"
+mount --bind "$save" "$root/save"
+
+swap=false
+[ "${GIZLET_SWAP_AB:-0}" != 1 ] || swap=true
+mkdir -m 0700 "$root/run/retroarch"
+cat > "$root/run/retroarch/launch.cfg" <<EOF
+rgui_browser_directory = "$browse"
+menu_swap_ok_cancel_buttons = "$swap"
+EOF
+chown -R "$user:$user" "$root/run/retroarch"
+
+cd "$root"
+pivot_root . .
+umount --internal-only --no-canonicalize --lazy .
+exec env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/save XDG_RUNTIME_DIR=/run/retroarch LANG=C.UTF-8 \
+    setpriv --reuid=$user --regid=$user --groups="$groups" --no-new-privs \
+    /usr/bin/retroarch --menu --config /save/retroarch.cfg \
+    --appendconfig "/usr/share/gizlet-retroarch/gizlet.cfg|/run/retroarch/launch.cfg"
